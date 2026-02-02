@@ -1,0 +1,6 @@
+[submodule "client/src/lib/style-editor"]
+	path = client/src/lib/style-editor
+	url = https://github.com/mediafranca/style-editor
+[submodule "client/src/lib/mf-schema"]
+	path = client/src/lib/mf-schema
+	url = https://github.com/mediafranca/mf-svg-schema
