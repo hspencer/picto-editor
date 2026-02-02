@@ -1,10 +1,10 @@
-# MediaFranca Semantic Refiner (picto-editor)
+# PictoEditor
 
-A specialized React tool for refining generative SVGs into semantically tagged, CSS-compliant assets for the MediaFranca ecosystem.
+A specialized React tool for refining generative SVGs into semantically tagged, CSS-compliant assets for the [PICTOS.net](https://pictos.net) and MediaFranca ecosystem.
 
 ## Overview
 
-The MediaFranca Semantic Refiner is a professional SVG editor designed specifically for working with AAC (Augmentative and Alternative Communication) pictograms that follow the MediaFranca SVG Schema. It provides a comprehensive interface for:
+SVG editor designed specifically for working with AAC (Augmentative and Alternative Communication) pictograms that follow the [MediaFranca SVG Schema](https://github.com/mediafranca/mf-svg-schema). It provides a comprehensive interface for:
 
 - **Semantic Structure Editing**: Visual tree-based editing of SVG DOM with semantic role mappings
 - **CSS-Only Styling**: Strict enforcement of CSS classes over inline styles
