@@ -7,64 +7,50 @@
 import { useEditorStore } from '@/stores/editorStore';
 import { Button } from '@/components/ui/button';
 import { Plus } from 'lucide-react';
-
-interface StyleClass {
-  name: string;
-  preview: string;
-}
+import StylePreviewCard from '@/lib/style-editor/lib/components/StylePreviewCard';
+import { getSvgStyleText, parseCssToStyleDefinitions } from '@/lib/styleUtils';
+import type { StyleDefinition } from '@/lib/style-editor/lib/types';
 
 export default function AvailableStylesPanel() {
   const { selectedElementId, svgDocument } = useEditorStore();
 
   // Extract CSS classes from the SVG document's <style> element
-  const extractStyles = (): StyleClass[] => {
+  const extractStyles = (): StyleDefinition[] => {
     if (!svgDocument) return [];
-
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(svgDocument, 'image/svg+xml');
-    const styleElement = doc.querySelector('style');
-
-    if (!styleElement) return [];
-
-    const cssText = styleElement.textContent || '';
-    const classRegex = /\.([a-zA-Z0-9_-]+)\s*\{([^}]+)\}/g;
-    const styles: StyleClass[] = [];
-
-    let match;
-    while ((match = classRegex.exec(cssText)) !== null) {
-      styles.push({
-        name: match[1],
-        preview: match[2].trim(),
-      });
-    }
-
-    return styles;
+    const cssText = getSvgStyleText(svgDocument);
+    return parseCssToStyleDefinitions(cssText);
   };
 
   const styles = extractStyles();
 
-  const handleApplyStyle = (className: string) => {
+  const handleApplyStyle = (styleDef: StyleDefinition) => {
     if (!selectedElementId || !svgDocument) return;
 
     const parser = new DOMParser();
     const doc = parser.parseFromString(svgDocument, 'image/svg+xml');
     const element = doc.querySelector(`#${CSS.escape(selectedElementId)}`);
 
-    if (element) {
-      const currentClass = element.getAttribute('class') || '';
-      const classes = currentClass.split(' ').filter(Boolean);
-      
-      if (!classes.includes(className)) {
-        classes.push(className);
-        element.setAttribute('class', classes.join(' '));
+    if (!element) return;
 
-        const serializer = new XMLSerializer();
-        const updatedSVG = serializer.serializeToString(doc);
-        
-        // Update the store
-        useEditorStore.getState().loadSVG(updatedSVG);
+    const currentClass = element.getAttribute('class') || '';
+    const classes = currentClass.split(' ').filter(Boolean);
+    const selectors = styleDef.selectors.filter((sel) => sel.startsWith('.'));
+    const classNames = selectors.map((sel) => sel.replace('.', ''));
+
+    let changed = false;
+    classNames.forEach((name) => {
+      if (!classes.includes(name)) {
+        classes.push(name);
+        changed = true;
       }
-    }
+    });
+
+    if (!changed) return;
+
+    element.setAttribute('class', classes.join(' '));
+    const serializer = new XMLSerializer();
+    const updatedSVG = serializer.serializeToString(doc);
+    useEditorStore.getState().loadSVG(updatedSVG);
   };
 
   return (
@@ -76,35 +62,36 @@ export default function AvailableStylesPanel() {
         </p>
       </div>
 
-      <div className="p-4 max-h-48 overflow-y-auto">
+      <div className="p-4 max-h-80 overflow-y-auto">
         {styles.length === 0 ? (
           <div className="text-center text-sm text-muted-foreground py-6">
             <p>No styles defined yet</p>
             <p className="text-xs mt-1">Create styles in the Style Forge panel</p>
           </div>
         ) : (
-          <div className="space-y-2">
+          <div className="grid grid-cols-1 gap-3">
             {styles.map((style) => (
-              <div
-                key={style.name}
-                className="flex items-start gap-2 p-2 border border-border rounded hover:bg-accent/30 transition-colors"
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="font-mono text-sm font-semibold">.{style.name}</div>
-                  <div className="text-xs text-muted-foreground font-mono truncate mt-1">
-                    {style.preview}
-                  </div>
+              <div key={style.id} className="relative">
+                <StylePreviewCard
+                  styleDef={style}
+                  shape="square"
+                  onClick={() => handleApplyStyle(style)}
+                />
+                <div className="absolute bottom-3 right-3">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 bg-white/80"
+                    disabled={!selectedElementId}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleApplyStyle(style);
+                    }}
+                  >
+                    <Plus className="w-3 h-3 mr-1" />
+                    Apply
+                  </Button>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 px-2"
-                  disabled={!selectedElementId}
-                  onClick={() => handleApplyStyle(style.name)}
-                >
-                  <Plus className="w-3 h-3 mr-1" />
-                  Apply
-                </Button>
               </div>
             ))}
           </div>

@@ -12,14 +12,15 @@ import { normalizeSVG, parseSVGToDOM } from '@/lib/svgNormalizer';
 import BoundingBox from './BoundingBox';
 
 export default function SVGCanvas() {
-  const { svgDocument, loadSVG, updateSVGDOM, selectedElementId } = useEditorStore();
+  const { svgDocument, loadSVG, updateSVGDOM, selectedElementId, selectElement } = useEditorStore();
   const [refreshKey, setRefreshKey] = useState(0);
   const svgContainerRef = useRef<HTMLDivElement>(null);
+  const svgContentRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [svgElement, setSvgElement] = useState<SVGSVGElement | null>(null);
 
   useEffect(() => {
-    if (svgDocument && svgContainerRef.current) {
+    if (svgDocument && svgContentRef.current) {
       // Parse and normalize SVG
       const normalized = normalizeSVG(svgDocument);
       const dom = parseSVGToDOM(normalized.svg);
@@ -29,8 +30,8 @@ export default function SVGCanvas() {
       }
 
       // Render SVG
-      svgContainerRef.current.innerHTML = normalized.svg;
-      const svg = svgContainerRef.current.querySelector('svg');
+      svgContentRef.current.innerHTML = normalized.svg;
+      const svg = svgContentRef.current.querySelector('svg');
       
       if (svg) {
         svg.style.width = '100%';
@@ -39,6 +40,33 @@ export default function SVGCanvas() {
       }
     }
   }, [svgDocument, updateSVGDOM]);
+
+  useEffect(() => {
+    if (!svgElement) return;
+
+    const handleSvgClick = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)) {
+        selectElement(null);
+        return;
+      }
+
+      if (target === svgElement) {
+        selectElement(null);
+        return;
+      }
+
+      const groupTarget = target.closest('g[id]');
+      const elementTarget = groupTarget ?? target.closest('[id]');
+      const id = elementTarget?.getAttribute('id') ?? null;
+      selectElement(id);
+    };
+
+    svgElement.addEventListener('click', handleSvgClick);
+    return () => {
+      svgElement.removeEventListener('click', handleSvgClick);
+    };
+  }, [svgElement, selectElement]);
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -58,9 +86,27 @@ export default function SVGCanvas() {
 
   const handleLoadSample = async () => {
     try {
-      const response = await fetch('/samples/make-bed.svg');
-      const content = await response.text();
-      loadSVG(content);
+      const baseUrl = import.meta.env.BASE_URL || '/';
+      const normalizedBase = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
+      const candidates = [
+        `${normalizedBase}samples/make-bed.svg`,
+        '/samples/make-bed.svg',
+      ];
+
+      let loaded = false;
+      for (const url of candidates) {
+        const response = await fetch(url, { cache: 'no-cache' });
+        if (!response.ok) continue;
+        const content = await response.text();
+        if (!content.includes('<svg')) continue;
+        loadSVG(content);
+        loaded = true;
+        break;
+      }
+
+      if (!loaded) {
+        console.error('Failed to load sample SVG: no valid response');
+      }
     } catch (error) {
       console.error('Failed to load sample SVG:', error);
     }
@@ -102,11 +148,13 @@ export default function SVGCanvas() {
         className="flex items-center justify-center p-8 min-h-full"
         style={{ position: 'relative' }}
       >
+        <div id="canvas-stage" ref={svgContentRef} className="w-full h-full" />
         {svgElement && selectedElementId && (
           <BoundingBox 
             key={refreshKey}
             svgElement={svgElement} 
             elementId={selectedElementId}
+            containerElement={svgContainerRef.current ?? svgElement}
             onTransformComplete={() => setRefreshKey(prev => prev + 1)}
           />
         )}

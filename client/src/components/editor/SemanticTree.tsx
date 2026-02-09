@@ -4,22 +4,40 @@
  */
 
 import { useEditorStore } from '@/stores/editorStore';
-import { useState } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import { ChevronRight, ChevronDown, Edit2, Check, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import type { SVGElement } from '@/stores/editorStore';
+import StylePickerModal from './StylePickerModal';
 
 interface TreeNodeProps {
   node: SVGElement;
   level: number;
+  getStyleInfo: (node: SVGElement) => { color: string | null; classes: string[] };
+  onStyleClick: (id: string) => void;
 }
 
-function TreeNode({ node, level }: TreeNodeProps) {
+const SKIP_TAGS = new Set(['defs', 'metadata', 'title', 'desc', 'style']);
+
+const buildVisualGroupTree = (node: SVGElement): SVGElement[] => {
+  const tag = node.tagName.toLowerCase();
+  if (SKIP_TAGS.has(tag)) return [];
+  const childGroups = node.children.flatMap((child) => buildVisualGroupTree(child));
+
+  if (tag === 'g') {
+    return [{ ...node, children: childGroups }];
+  }
+
+  return childGroups;
+};
+
+function TreeNode({ node, level, getStyleInfo, onStyleClick }: TreeNodeProps) {
   const { selectedElementId, selectElement, updateElementId } = useEditorStore();
   const [isExpanded, setIsExpanded] = useState(true);
   const [isEditingId, setIsEditingId] = useState(false);
   const [editedId, setEditedId] = useState(node.id);
+  const styleInfo = getStyleInfo(node);
 
   const hasChildren = node.children && node.children.length > 0;
   const isSelected = selectedElementId === node.id;
@@ -64,6 +82,26 @@ function TreeNode({ node, level }: TreeNodeProps) {
         {!hasChildren && <div className="w-5" />}
 
         <span className="text-xs font-mono text-muted-foreground">&lt;{node.tagName}&gt;</span>
+
+        <button
+          className="ml-1 inline-flex items-center justify-center w-5 h-5 rounded-full border border-border bg-background"
+          onClick={(e) => {
+            e.stopPropagation();
+            onStyleClick(node.id);
+          }}
+          title={styleInfo.classes.length > 0 ? `Styles: ${styleInfo.classes.join(' ')}` : 'Assign style'}
+        >
+          <svg width="10" height="10" viewBox="0 0 10 10">
+            <circle
+              cx="5"
+              cy="5"
+              r="4"
+              fill={styleInfo.color || 'transparent'}
+              stroke={styleInfo.color ? 'none' : 'currentColor'}
+              className="text-muted-foreground"
+            />
+          </svg>
+        </button>
 
         {isEditingId ? (
           <div className="flex items-center gap-1 flex-1" onClick={(e) => e.stopPropagation()}>
@@ -115,7 +153,13 @@ function TreeNode({ node, level }: TreeNodeProps) {
       {isExpanded && hasChildren && (
         <div>
           {node.children.map((child) => (
-            <TreeNode key={child.id} node={child} level={level + 1} />
+            <TreeNode
+              key={child.id}
+              node={child}
+              level={level + 1}
+              getStyleInfo={getStyleInfo}
+              onStyleClick={onStyleClick}
+            />
           ))}
         </div>
       )}
@@ -124,7 +168,40 @@ function TreeNode({ node, level }: TreeNodeProps) {
 }
 
 export default function SemanticTree() {
-  const { svgDOM } = useEditorStore();
+  const { svgDOM, styleDefinitions } = useEditorStore();
+  const [stylePickerTarget, setStylePickerTarget] = useState<string | null>(null);
+
+  const visualGroups = useMemo(() => {
+    if (!svgDOM) return [];
+    return buildVisualGroupTree(svgDOM);
+  }, [svgDOM]);
+
+  const classColorMap = useMemo(() => {
+    const map = new Map<string, string>();
+    styleDefinitions.forEach((style) => {
+      const fillRule = style.rules.find((rule) => rule.property.toLowerCase() === 'fill');
+      const strokeRule = style.rules.find((rule) => rule.property.toLowerCase() === 'stroke');
+      const color = (fillRule?.value || strokeRule?.value || '').trim();
+      style.selectors.forEach((selector) => {
+        if (!selector.startsWith('.')) return;
+        const className = selector.replace('.', '');
+        if (color) {
+          map.set(className, color);
+        }
+      });
+    });
+    return map;
+  }, [styleDefinitions]);
+
+  const getStyleInfo = useCallback(
+    (node: SVGElement) => {
+      const classAttr = node.attributes?.class || '';
+      const classes = classAttr.split(' ').map((c) => c.trim()).filter(Boolean);
+      const color = classes.map((cls) => classColorMap.get(cls)).find(Boolean) || null;
+      return { color, classes };
+    },
+    [classColorMap]
+  );
 
   if (!svgDOM) {
     return (
@@ -136,14 +213,35 @@ export default function SemanticTree() {
   }
 
   return (
-    <div className="py-2">
+    <div id="panel-semantic-tree" className="py-2">
       <div className="px-4 py-2 border-b border-border">
-        <h2 className="text-sm font-semibold">Semantic Tree</h2>
+        <h2 className="text-sm font-semibold">Visual Groups</h2>
         <p className="text-xs text-muted-foreground mt-1">
-          Click elements to select, edit IDs inline
+          Focused on &lt;g&gt; elements (root, metadata, defs hidden)
         </p>
       </div>
-      <TreeNode node={svgDOM} level={0} />
+      {visualGroups.length === 0 ? (
+        <div className="p-4 text-center text-sm text-muted-foreground">
+          <p>No visual groups found</p>
+          <p className="mt-2 text-xs">Add &lt;g&gt; elements to enable semantic grouping</p>
+        </div>
+      ) : (
+        visualGroups.map((node) => (
+          <TreeNode
+            key={node.id}
+            node={node}
+            level={0}
+            getStyleInfo={getStyleInfo}
+            onStyleClick={(id) => setStylePickerTarget(id)}
+          />
+        ))
+      )}
+
+      <StylePickerModal
+        open={stylePickerTarget !== null}
+        elementId={stylePickerTarget}
+        onClose={() => setStylePickerTarget(null)}
+      />
     </div>
   );
 }

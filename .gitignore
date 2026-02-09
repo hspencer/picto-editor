@@ -1,3 +1,7 @@
+# Agents
+.manus-logs
+agents.md 
+
 # Dependencies
 **/node_modules
 .pnpm-store/

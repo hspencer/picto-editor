@@ -12,7 +12,6 @@ import { Button } from '@/components/ui/button';
 import SemanticTree from '@/components/editor/SemanticTree';
 import SVGCanvas from '@/components/editor/SVGCanvas';
 import StyleForgeEnhanced from '@/components/editor/StyleForgeEnhanced';
-import AvailableStylesPanel from '@/components/editor/AvailableStylesPanel';
 
 export default function Editor() {
   const { canUndo, canRedo, undo, redo, exportToSchema } = useEditorStore();
@@ -76,21 +75,18 @@ export default function Editor() {
       {/* Main Workspace */}
       <div id="view-workspace" className="flex-1 flex overflow-hidden">
         {/* Left Panel: Semantic Tree */}
-        <aside id="aside-semantic-tree" className="w-80 border-r border-border bg-card overflow-y-auto">
+        <aside id="aside-semantic-tree" className="w-64 flex-none border-r border-border bg-card overflow-y-auto">
           <SemanticTree />
         </aside>
 
         {/* Center: Canvas Viewport */}
-        <main id="canvas-viewport" className="flex-1 bg-muted/30 overflow-hidden">
+        <main id="canvas-viewport" className="flex-1 min-w-0 bg-muted/30 overflow-hidden">
           <SVGCanvas />
         </main>
 
         {/* Right Panel: Style Forge */}
         <StyleForgeEnhanced />
       </div>
-
-      {/* Bottom: Available Styles Panel */}
-      <AvailableStylesPanel />
     </div>
   );
 }

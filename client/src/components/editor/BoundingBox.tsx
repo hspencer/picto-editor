@@ -9,6 +9,7 @@ import { useEditorStore } from '@/stores/editorStore';
 interface BoundingBoxProps {
   svgElement: SVGSVGElement;
   elementId: string;
+  containerElement: Element;
   onTransformComplete?: () => void;
 }
 
@@ -21,17 +22,235 @@ interface BBox {
 
 type HandleType = 'move' | 'nw' | 'ne' | 'sw' | 'se' | 'n' | 's' | 'w' | 'e';
 
-export default function BoundingBox({ svgElement, elementId, onTransformComplete }: BoundingBoxProps) {
+const SVG_NS = 'http://www.w3.org/2000/svg';
+const NUMBER_REGEX = /-?\d*\.?\d+(?:e[-+]?\d+)?/gi;
+const EPSILON = 1e-6;
+
+function parseNumbers(input: string): number[] {
+  const matches = input.match(NUMBER_REGEX);
+  return matches ? matches.map((value) => Number(value)) : [];
+}
+
+function formatNumber(value: number): string {
+  if (!Number.isFinite(value)) return '0';
+  const rounded = Math.round(value * 1000) / 1000;
+  const normalized = Object.is(rounded, -0) ? 0 : rounded;
+  return `${normalized}`;
+}
+
+function formatNumberList(values: number[]): string {
+  return values.map(formatNumber).join(' ');
+}
+
+function transformPathData(
+  d: string,
+  mapX: (x: number) => number,
+  mapY: (y: number) => number,
+  scaleX: number,
+  scaleY: number
+): string {
+  const commandRegex = /([a-zA-Z])([^a-zA-Z]*)/g;
+  const paramCounts: Record<string, number> = {
+    M: 2,
+    L: 2,
+    H: 1,
+    V: 1,
+    C: 6,
+    S: 4,
+    Q: 4,
+    T: 2,
+    A: 7,
+    Z: 0,
+  };
+
+  const parts: string[] = [];
+  let match: RegExpExecArray | null;
+  let currentX = 0;
+  let currentY = 0;
+  let startX = 0;
+  let startY = 0;
+
+  while ((match = commandRegex.exec(d)) !== null) {
+    const command = match[1];
+    const upper = command.toUpperCase();
+    const params = parseNumbers(match[2] ?? '');
+    const isRelative = command === command.toLowerCase();
+
+    if (upper === 'Z') {
+      parts.push('Z');
+      currentX = startX;
+      currentY = startY;
+      continue;
+    }
+
+    const paramCount = paramCounts[upper];
+    if (!paramCount || params.length === 0) {
+      continue;
+    }
+
+    const pushMapped = (cmd: string, values: number[]) => {
+      parts.push(`${cmd}${formatNumberList(values)}`);
+    };
+
+    if (upper === 'M') {
+      let index = 0;
+      while (index + 1 < params.length) {
+        let x = params[index];
+        let y = params[index + 1];
+        if (isRelative) {
+          x += currentX;
+          y += currentY;
+        }
+        if (index === 0) {
+          startX = x;
+          startY = y;
+          pushMapped('M', [mapX(x), mapY(y)]);
+        } else {
+          pushMapped('L', [mapX(x), mapY(y)]);
+        }
+        currentX = x;
+        currentY = y;
+        index += 2;
+      }
+      continue;
+    }
+
+    let index = 0;
+    while (index + paramCount - 1 < params.length) {
+      const chunk = params.slice(index, index + paramCount);
+
+      switch (upper) {
+        case 'L': {
+          let x = chunk[0];
+          let y = chunk[1];
+          if (isRelative) {
+            x += currentX;
+            y += currentY;
+          }
+          pushMapped('L', [mapX(x), mapY(y)]);
+          currentX = x;
+          currentY = y;
+          break;
+        }
+        case 'H': {
+          let x = chunk[0];
+          if (isRelative) {
+            x += currentX;
+          }
+          pushMapped('L', [mapX(x), mapY(currentY)]);
+          currentX = x;
+          break;
+        }
+        case 'V': {
+          let y = chunk[0];
+          if (isRelative) {
+            y += currentY;
+          }
+          pushMapped('L', [mapX(currentX), mapY(y)]);
+          currentY = y;
+          break;
+        }
+        case 'C': {
+          let [x1, y1, x2, y2, x, y] = chunk;
+          if (isRelative) {
+            x1 += currentX;
+            y1 += currentY;
+            x2 += currentX;
+            y2 += currentY;
+            x += currentX;
+            y += currentY;
+          }
+          pushMapped('C', [mapX(x1), mapY(y1), mapX(x2), mapY(y2), mapX(x), mapY(y)]);
+          currentX = x;
+          currentY = y;
+          break;
+        }
+        case 'S': {
+          let [x2, y2, x, y] = chunk;
+          if (isRelative) {
+            x2 += currentX;
+            y2 += currentY;
+            x += currentX;
+            y += currentY;
+          }
+          pushMapped('S', [mapX(x2), mapY(y2), mapX(x), mapY(y)]);
+          currentX = x;
+          currentY = y;
+          break;
+        }
+        case 'Q': {
+          let [x1, y1, x, y] = chunk;
+          if (isRelative) {
+            x1 += currentX;
+            y1 += currentY;
+            x += currentX;
+            y += currentY;
+          }
+          pushMapped('Q', [mapX(x1), mapY(y1), mapX(x), mapY(y)]);
+          currentX = x;
+          currentY = y;
+          break;
+        }
+        case 'T': {
+          let [x, y] = chunk;
+          if (isRelative) {
+            x += currentX;
+            y += currentY;
+          }
+          pushMapped('T', [mapX(x), mapY(y)]);
+          currentX = x;
+          currentY = y;
+          break;
+        }
+        case 'A': {
+          let [rx, ry, rotation, largeArcFlag, sweepFlag, x, y] = chunk;
+          if (isRelative) {
+            x += currentX;
+            y += currentY;
+          }
+          rx = Math.abs(rx * scaleX);
+          ry = Math.abs(ry * scaleY);
+          pushMapped('A', [
+            rx,
+            ry,
+            rotation,
+            Math.round(largeArcFlag),
+            Math.round(sweepFlag),
+            mapX(x),
+            mapY(y),
+          ]);
+          currentX = x;
+          currentY = y;
+          break;
+        }
+        default:
+          break;
+      }
+
+      index += paramCount;
+    }
+  }
+
+  return parts.join(' ');
+}
+
+export default function BoundingBox({ svgElement, elementId, containerElement, onTransformComplete }: BoundingBoxProps) {
   const [bbox, setBbox] = useState<BBox | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [activeHandle, setActiveHandle] = useState<HandleType | null>(null);
   const dragStartRef = useRef<{ x: number; y: number; bbox: BBox; elementBBox: DOMRect } | null>(null);
   const targetElementRef = useRef<SVGGraphicsElement | null>(null);
-  const { addToHistory } = useEditorStore();
+  const { loadSVG } = useEditorStore();
 
   useEffect(() => {
     updateBoundingBox();
-  }, [svgElement, elementId]);
+  }, [svgElement, elementId, containerElement]);
+
+  useEffect(() => {
+    const handleResize = () => updateBoundingBox();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [svgElement, elementId, containerElement]);
 
   const updateBoundingBox = () => {
     const element = svgElement.querySelector(`#${CSS.escape(elementId)}`);
@@ -40,31 +259,41 @@ export default function BoundingBox({ svgElement, elementId, onTransformComplete
       try {
         const elementBBox = element.getBBox();
         
-        // Get the SVG container's position on the page
-        const svgRect = svgElement.getBoundingClientRect();
+        // Get the container's position on the page
+        const containerRect = containerElement.getBoundingClientRect();
         
         // Transform bbox corners to screen coordinates
-        const topLeft = svgElement.createSVGPoint();
-        topLeft.x = elementBBox.x;
-        topLeft.y = elementBBox.y;
-        
-        const bottomRight = svgElement.createSVGPoint();
-        bottomRight.x = elementBBox.x + elementBBox.width;
-        bottomRight.y = elementBBox.y + elementBBox.height;
+        const points = [
+          { x: elementBBox.x, y: elementBBox.y },
+          { x: elementBBox.x + elementBBox.width, y: elementBBox.y },
+          { x: elementBBox.x + elementBBox.width, y: elementBBox.y + elementBBox.height },
+          { x: elementBBox.x, y: elementBBox.y + elementBBox.height },
+        ];
         
         // Get the transformation matrix from element to screen
         const ctm = element.getScreenCTM();
         
         if (ctm) {
-          const transformedTopLeft = topLeft.matrixTransform(ctm);
-          const transformedBottomRight = bottomRight.matrixTransform(ctm);
+          const transformed = points.map((point) => {
+            const svgPoint = svgElement.createSVGPoint();
+            svgPoint.x = point.x;
+            svgPoint.y = point.y;
+            return svgPoint.matrixTransform(ctm);
+          });
 
-          // Calculate position relative to SVG container
+          const xs = transformed.map((p) => p.x);
+          const ys = transformed.map((p) => p.y);
+          const minX = Math.min(...xs);
+          const maxX = Math.max(...xs);
+          const minY = Math.min(...ys);
+          const maxY = Math.max(...ys);
+
+          // Calculate position relative to container
           setBbox({
-            x: transformedTopLeft.x - svgRect.left,
-            y: transformedTopLeft.y - svgRect.top,
-            width: transformedBottomRight.x - transformedTopLeft.x,
-            height: transformedBottomRight.y - transformedTopLeft.y,
+            x: minX - containerRect.left,
+            y: minY - containerRect.top,
+            width: maxX - minX,
+            height: maxY - minY,
           });
         }
       } catch (error) {
@@ -174,79 +403,174 @@ export default function BoundingBox({ svgElement, elementId, onTransformComplete
     if (!targetElementRef.current || !dragStartRef.current || !bbox || !svgElement) return;
 
     const element = targetElementRef.current;
-    const startBBox = dragStartRef.current.bbox;
     const elementBBox = dragStartRef.current.elementBBox;
-    
-    // Calculate transform in screen space
-    const screenDx = bbox.x - startBBox.x;
-    const screenDy = bbox.y - startBBox.y;
-    const screenScaleX = bbox.width / startBBox.width;
-    const screenScaleY = bbox.height / startBBox.height;
 
-    // Convert screen space deltas to SVG space
-    const svgRect = svgElement.getBoundingClientRect();
-    const ctm = element.getScreenCTM();
-    
-    if (!ctm) return;
+    const svgCTM = svgElement.getScreenCTM();
+    if (!svgCTM) return;
 
-    // Create inverse matrix to convert from screen to SVG coordinates
-    const inverseCTM = ctm.inverse();
-    
-    // Convert translation from screen to SVG space
-    const screenStart = svgElement.createSVGPoint();
-    screenStart.x = startBBox.x + svgRect.left;
-    screenStart.y = startBBox.y + svgRect.top;
-    
-    const screenEnd = svgElement.createSVGPoint();
-    screenEnd.x = bbox.x + svgRect.left;
-    screenEnd.y = bbox.y + svgRect.top;
-    
-    const svgStart = screenStart.matrixTransform(inverseCTM);
-    const svgEnd = screenEnd.matrixTransform(inverseCTM);
-    
-    const svgDx = svgEnd.x - svgStart.x;
-    const svgDy = svgEnd.y - svgStart.y;
+    const inverseCTM = svgCTM.inverse();
+    const containerRect = containerElement.getBoundingClientRect();
 
-    // Get current transform or create new one
-    let transform = element.transform.baseVal;
-    
-    // Clear existing transforms for this operation
-    while (transform.numberOfItems > 0) {
-      transform.removeItem(0);
+    const screenToSvg = (x: number, y: number) => {
+      const point = svgElement.createSVGPoint();
+      point.x = x;
+      point.y = y;
+      return point.matrixTransform(inverseCTM);
+    };
+
+    const screenLeft = containerRect.left + bbox.x;
+    const screenTop = containerRect.top + bbox.y;
+    const screenRight = screenLeft + bbox.width;
+    const screenBottom = screenTop + bbox.height;
+
+    const svgTopLeft = screenToSvg(screenLeft, screenTop);
+    const svgBottomRight = screenToSvg(screenRight, screenBottom);
+
+    const newBBox = {
+      x: Math.min(svgTopLeft.x, svgBottomRight.x),
+      y: Math.min(svgTopLeft.y, svgBottomRight.y),
+      width: Math.abs(svgBottomRight.x - svgTopLeft.x),
+      height: Math.abs(svgBottomRight.y - svgTopLeft.y),
+    };
+
+    if (elementBBox.width < EPSILON || elementBBox.height < EPSILON) {
+      return;
     }
 
-    // Apply translation if moved
-    if (Math.abs(svgDx) > 0.01 || Math.abs(svgDy) > 0.01) {
-      const translate = svgElement.createSVGTransform();
-      translate.setTranslate(svgDx, svgDy);
-      transform.appendItem(translate);
-    }
+    const scaleX = newBBox.width / elementBBox.width;
+    const scaleY = newBBox.height / elementBBox.height;
 
-    // Apply scale if resized
-    if (Math.abs(screenScaleX - 1) > 0.01 || Math.abs(screenScaleY - 1) > 0.01) {
-      const scale = svgElement.createSVGTransform();
-      // Scale from the element's origin point
-      scale.setScale(screenScaleX, screenScaleY);
-      transform.appendItem(scale);
-      
-      // Adjust translation to keep the element in place after scaling
-      const scaleAdjustX = elementBBox.x * (1 - screenScaleX);
-      const scaleAdjustY = elementBBox.y * (1 - screenScaleY);
-      
-      if (Math.abs(scaleAdjustX) > 0.01 || Math.abs(scaleAdjustY) > 0.01) {
-        const adjustTranslate = svgElement.createSVGTransform();
-        adjustTranslate.setTranslate(scaleAdjustX, scaleAdjustY);
-        transform.insertItemBefore(adjustTranslate, 0);
+    const mapX = (x: number) => (x - elementBBox.x) * scaleX + newBBox.x;
+    const mapY = (y: number) => (y - elementBBox.y) * scaleY + newBBox.y;
+
+    const applyMapToElement = (target: SVGGraphicsElement): SVGGraphicsElement => {
+      const tag = target.tagName.toLowerCase();
+
+      switch (tag) {
+        case 'rect': {
+          const x = parseFloat(target.getAttribute('x') || '0');
+          const y = parseFloat(target.getAttribute('y') || '0');
+          const width = parseFloat(target.getAttribute('width') || '0');
+          const height = parseFloat(target.getAttribute('height') || '0');
+          const rx = target.getAttribute('rx');
+          const ry = target.getAttribute('ry');
+
+          target.setAttribute('x', formatNumber(mapX(x)));
+          target.setAttribute('y', formatNumber(mapY(y)));
+          target.setAttribute('width', formatNumber(width * scaleX));
+          target.setAttribute('height', formatNumber(height * scaleY));
+
+          if (rx !== null) {
+            target.setAttribute('rx', formatNumber(parseFloat(rx) * scaleX));
+          }
+          if (ry !== null) {
+            target.setAttribute('ry', formatNumber(parseFloat(ry) * scaleY));
+          }
+          return target;
+        }
+        case 'circle': {
+          const cx = parseFloat(target.getAttribute('cx') || '0');
+          const cy = parseFloat(target.getAttribute('cy') || '0');
+          const r = parseFloat(target.getAttribute('r') || '0');
+          const nextCx = mapX(cx);
+          const nextCy = mapY(cy);
+          const nextRx = Math.abs(r * scaleX);
+          const nextRy = Math.abs(r * scaleY);
+
+          if (Math.abs(scaleX - scaleY) > 0.001) {
+            const ellipse = target.ownerDocument.createElementNS(SVG_NS, 'ellipse');
+            Array.from(target.attributes).forEach((attr) => {
+              if (attr.name === 'cx' || attr.name === 'cy' || attr.name === 'r') return;
+              ellipse.setAttribute(attr.name, attr.value);
+            });
+            ellipse.setAttribute('cx', formatNumber(nextCx));
+            ellipse.setAttribute('cy', formatNumber(nextCy));
+            ellipse.setAttribute('rx', formatNumber(nextRx));
+            ellipse.setAttribute('ry', formatNumber(nextRy));
+            target.parentNode?.replaceChild(ellipse, target);
+            return ellipse as SVGGraphicsElement;
+          }
+
+          target.setAttribute('cx', formatNumber(nextCx));
+          target.setAttribute('cy', formatNumber(nextCy));
+          target.setAttribute('r', formatNumber(nextRx));
+          return target;
+        }
+        case 'ellipse': {
+          const cx = parseFloat(target.getAttribute('cx') || '0');
+          const cy = parseFloat(target.getAttribute('cy') || '0');
+          const rx = parseFloat(target.getAttribute('rx') || '0');
+          const ry = parseFloat(target.getAttribute('ry') || '0');
+
+          target.setAttribute('cx', formatNumber(mapX(cx)));
+          target.setAttribute('cy', formatNumber(mapY(cy)));
+          target.setAttribute('rx', formatNumber(Math.abs(rx * scaleX)));
+          target.setAttribute('ry', formatNumber(Math.abs(ry * scaleY)));
+          return target;
+        }
+        case 'line': {
+          const x1 = parseFloat(target.getAttribute('x1') || '0');
+          const y1 = parseFloat(target.getAttribute('y1') || '0');
+          const x2 = parseFloat(target.getAttribute('x2') || '0');
+          const y2 = parseFloat(target.getAttribute('y2') || '0');
+
+          target.setAttribute('x1', formatNumber(mapX(x1)));
+          target.setAttribute('y1', formatNumber(mapY(y1)));
+          target.setAttribute('x2', formatNumber(mapX(x2)));
+          target.setAttribute('y2', formatNumber(mapY(y2)));
+          return target;
+        }
+        case 'polyline':
+        case 'polygon': {
+          const points = target.getAttribute('points') || '';
+          const nums = parseNumbers(points);
+          const mapped: number[] = [];
+          for (let i = 0; i + 1 < nums.length; i += 2) {
+            mapped.push(mapX(nums[i]), mapY(nums[i + 1]));
+          }
+          const formatted = [];
+          for (let i = 0; i + 1 < mapped.length; i += 2) {
+            formatted.push(`${formatNumber(mapped[i])},${formatNumber(mapped[i + 1])}`);
+          }
+          target.setAttribute('points', formatted.join(' '));
+          return target;
+        }
+        case 'path': {
+          const d = target.getAttribute('d');
+          if (d) {
+            const transformed = transformPathData(d, mapX, mapY, scaleX, scaleY);
+            target.setAttribute('d', transformed);
+          }
+          return target;
+        }
+        default:
+          return target;
       }
+    };
+
+    let updatedTarget = element;
+
+    if (element.tagName.toLowerCase() === 'g') {
+      const descendants = element.querySelectorAll<SVGGraphicsElement>(
+        'rect,circle,ellipse,line,polyline,polygon,path'
+      );
+      descendants.forEach((child) => {
+        applyMapToElement(child);
+      });
+    } else {
+      updatedTarget = applyMapToElement(element);
     }
 
-    // Add to history
-    addToHistory();
+    if (updatedTarget !== element) {
+      targetElementRef.current = updatedTarget;
+    }
 
-    // Update bounding box to reflect new position
+    const serializer = new XMLSerializer();
+    const updatedSVG = serializer.serializeToString(svgElement);
+    loadSVG(updatedSVG);
+
     updateBoundingBox();
-    
-    // Notify parent component
+
     if (onTransformComplete) {
       onTransformComplete();
     }
