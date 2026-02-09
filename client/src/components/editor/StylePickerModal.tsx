@@ -22,7 +22,6 @@ export default function StylePickerModal({ open, elementId, onClose }: StylePick
     styleDefinitions,
     keyframes,
     setElementClasses,
-    addElementClasses,
     removeElementClasses,
   } = useEditorStore();
 
@@ -55,14 +54,18 @@ export default function StylePickerModal({ open, elementId, onClose }: StylePick
   const handleApplyStyle = (styleDef: StyleDefinition) => {
     if (!elementId || !svgDocument) return;
     const selectors = styleDef.selectors.filter((sel) => sel.startsWith('.'));
-    const classNames = selectors.map((sel) => sel.replace('.', ''));
-    addElementClasses(elementId, classNames);
+    const classNames = selectors.map((sel) => sel.replace('.', '')).filter(Boolean);
+    const primary = classNames[0];
+    if (!primary) return;
+    const next = elementClasses.filter((cls) => !classNames.includes(cls));
+    next.push(primary);
+    setElementClasses(elementId, next);
   };
 
   const handleRemoveStyle = (styleDef: StyleDefinition) => {
     if (!elementId || !svgDocument) return;
     const selectors = styleDef.selectors.filter((sel) => sel.startsWith('.'));
-    const classNames = selectors.map((sel) => sel.replace('.', ''));
+    const classNames = selectors.map((sel) => sel.replace('.', '')).filter(Boolean);
     removeElementClasses(elementId, classNames);
   };
 
@@ -115,7 +118,7 @@ export default function StylePickerModal({ open, elementId, onClose }: StylePick
                 <div key={style.id} className="relative">
                   {(() => {
                     const selectors = style.selectors.filter((sel) => sel.startsWith('.'));
-                    const classNames = selectors.map((sel) => sel.replace('.', ''));
+                    const classNames = selectors.map((sel) => sel.replace('.', '')).filter(Boolean);
                     const isApplied = classNames.some((name) => elementClasses.includes(name));
                     return (
                       <>

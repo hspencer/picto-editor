@@ -39,6 +39,8 @@ export interface EditorState {
   selectElement: (id: string | null) => void;
   updateElementId: (oldId: string, newId: string) => void;
   updateElement: (id: string, updates: Partial<SVGElement>) => void;
+  moveElement: (dragId: string, targetId: string, mode?: 'inside' | 'after') => void;
+  deleteElement: (id: string) => void;
   setStyles: (styles: StyleDefinition[]) => void;
   setKeyframes: (keyframes: KeyframeDefinition[]) => void;
   setElementClasses: (id: string, classes: string[]) => void;
@@ -95,22 +97,51 @@ export const useEditorStore = create<EditorState>((set, get) => {
     }));
   };
 
-  const ensureSvgHasStyles = (svg: string) => {
-    const cssText = getSvgStyleText(svg);
-    if (cssText.trim()) return svg;
-    const styles = get().styleDefinitions.length > 0 ? get().styleDefinitions : INITIAL_STYLES;
-    const keyframes = get().keyframes.length > 0 ? get().keyframes : INITIAL_KEYFRAMES;
-    const css = generateCssString(styles, keyframes);
-    return updateSvgStyleText(svg, css);
+  const getUsedClassNamesFromSvg = (svg: string): Set<string> => {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(svg, 'image/svg+xml');
+    const elementsWithClass = doc.querySelectorAll('[class]');
+    const classes = new Set<string>();
+    elementsWithClass.forEach((el) => {
+      const classAttr = el.getAttribute('class') || '';
+      classAttr
+        .split(' ')
+        .map((c) => c.trim())
+        .filter(Boolean)
+        .forEach((cls) => classes.add(cls));
+    });
+    return classes;
+  };
+
+  const getUsedStyles = (styles: StyleDefinition[], usedClasses: Set<string>) => {
+    return styles.filter((style) =>
+      style.selectors.some((selector) => {
+        if (!selector.startsWith('.')) return false;
+        const className = selector.replace('.', '');
+        return usedClasses.has(className);
+      })
+    );
+  };
+
+  const applyUsedStylesToSvg = (
+    svg: string,
+    styles: StyleDefinition[],
+    keyframes: KeyframeDefinition[]
+  ) => {
+    const usedClasses = getUsedClassNamesFromSvg(svg);
+    const usedStyles = getUsedStyles(styles, usedClasses);
+    const css = generateCssString(usedStyles, keyframes);
+    return updateSvgStyleText(svg, css, true);
   };
 
   const resolveStylesForSvg = (svg: string) => {
     const cssText = getSvgStyleText(svg);
     const parsed = cssText.trim() ? parseCssToStyleDefinitions(cssText) : [];
+    const baseStyles = get().styleDefinitions.length > 0 ? get().styleDefinitions : INITIAL_STYLES;
     if (parsed.length > 0) {
-      return mergeStyles(INITIAL_STYLES, parsed);
+      return mergeStyles(baseStyles, parsed);
     }
-    return get().styleDefinitions.length > 0 ? get().styleDefinitions : INITIAL_STYLES;
+    return baseStyles;
   };
 
   return {
@@ -126,8 +157,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
   loadSVG: (svg: string) => {
     const styles = resolveStylesForSvg(svg);
     const keyframes = get().keyframes.length > 0 ? get().keyframes : INITIAL_KEYFRAMES;
-    const css = generateCssString(styles, keyframes);
-    const nextSvg = updateSvgStyleText(svg, css);
+    const nextSvg = applyUsedStylesToSvg(svg, styles, keyframes);
     set((state) => ({
       styleDefinitions: styles,
       keyframes,
@@ -180,13 +210,61 @@ export const useEditorStore = create<EditorState>((set, get) => {
     set({ svgDOM: updatedDOM });
   },
 
+  moveElement: (dragId: string, targetId: string, mode: 'inside' | 'after' = 'after') => {
+    const svgDocument = get().svgDocument;
+    if (!svgDocument) return;
+
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(svgDocument, 'image/svg+xml');
+    const dragElement = doc.querySelector(`#${CSS.escape(dragId)}`);
+    const targetElement = doc.querySelector(`#${CSS.escape(targetId)}`);
+
+    if (!dragElement || !targetElement || dragElement === targetElement) return;
+    if (dragElement.contains(targetElement)) return;
+
+    if (mode === 'inside') {
+      targetElement.appendChild(dragElement);
+    } else {
+      const parent = targetElement.parentNode;
+      if (!parent) return;
+      parent.insertBefore(dragElement, targetElement.nextSibling);
+    }
+
+    const serialized = new XMLSerializer().serializeToString(doc);
+    const nextSvg = applyUsedStylesToSvg(
+      serialized,
+      get().styleDefinitions,
+      get().keyframes
+    );
+    commitSvg(nextSvg);
+  },
+
+  deleteElement: (id: string) => {
+    const svgDocument = get().svgDocument;
+    if (!svgDocument) return;
+
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(svgDocument, 'image/svg+xml');
+    const element = doc.querySelector(`#${CSS.escape(id)}`);
+    if (!element) return;
+    element.remove();
+
+    const serialized = new XMLSerializer().serializeToString(doc);
+    const nextSvg = applyUsedStylesToSvg(
+      serialized,
+      get().styleDefinitions,
+      get().keyframes
+    );
+    commitSvg(nextSvg);
+    set({ selectedElementId: null });
+  },
+
   setStyles: (styles: StyleDefinition[]) => {
     set({ styleDefinitions: styles });
     const svgDocument = get().svgDocument;
     if (!svgDocument) return;
     const keyframes = get().keyframes;
-    const css = generateCssString(styles, keyframes);
-    const updatedSvg = updateSvgStyleText(svgDocument, css);
+    const updatedSvg = applyUsedStylesToSvg(svgDocument, styles, keyframes);
     commitSvg(updatedSvg);
   },
 
@@ -195,40 +273,51 @@ export const useEditorStore = create<EditorState>((set, get) => {
     const svgDocument = get().svgDocument;
     if (!svgDocument) return;
     const styles = get().styleDefinitions;
-    const css = generateCssString(styles, keyframes);
-    const updatedSvg = updateSvgStyleText(svgDocument, css);
+    const updatedSvg = applyUsedStylesToSvg(svgDocument, styles, keyframes);
     commitSvg(updatedSvg);
   },
 
   setElementClasses: (id: string, classes: string[]) => {
     const svgDocument = get().svgDocument;
     if (!svgDocument) return;
-    const ensured = ensureSvgHasStyles(svgDocument);
-    const updatedSvg = updateElementClassesInSvg(ensured, id, classes);
-    commitSvg(updatedSvg);
+    const updatedSvg = updateElementClassesInSvg(svgDocument, id, classes);
+    const nextSvg = applyUsedStylesToSvg(
+      updatedSvg,
+      get().styleDefinitions,
+      get().keyframes
+    );
+    commitSvg(nextSvg);
   },
 
   addElementClasses: (id: string, classes: string[]) => {
     const svgDocument = get().svgDocument;
     if (!svgDocument) return;
-    const ensured = ensureSvgHasStyles(svgDocument);
-    const current = getElementClassesFromSvg(ensured, id);
+    const current = getElementClassesFromSvg(svgDocument, id);
     const next = [...current];
     classes.forEach((cls) => {
       if (!next.includes(cls)) next.push(cls);
     });
-    const updatedSvg = updateElementClassesInSvg(ensured, id, next);
-    commitSvg(updatedSvg);
+    const updatedSvg = updateElementClassesInSvg(svgDocument, id, next);
+    const nextSvg = applyUsedStylesToSvg(
+      updatedSvg,
+      get().styleDefinitions,
+      get().keyframes
+    );
+    commitSvg(nextSvg);
   },
 
   removeElementClasses: (id: string, classes: string[]) => {
     const svgDocument = get().svgDocument;
     if (!svgDocument) return;
-    const ensured = ensureSvgHasStyles(svgDocument);
-    const current = getElementClassesFromSvg(ensured, id);
+    const current = getElementClassesFromSvg(svgDocument, id);
     const next = current.filter((cls) => !classes.includes(cls));
-    const updatedSvg = updateElementClassesInSvg(ensured, id, next);
-    commitSvg(updatedSvg);
+    const updatedSvg = updateElementClassesInSvg(svgDocument, id, next);
+    const nextSvg = applyUsedStylesToSvg(
+      updatedSvg,
+      get().styleDefinitions,
+      get().keyframes
+    );
+    commitSvg(nextSvg);
   },
 
   undo: () => {
@@ -236,11 +325,13 @@ export const useEditorStore = create<EditorState>((set, get) => {
     if (historyIndex > 0) {
       const newIndex = historyIndex - 1;
       const svg = history[newIndex];
-      const styles = resolveStylesForSvg(svg);
       set((state) => ({
         svgDocument: svg,
         historyIndex: newIndex,
-        styleDefinitions: styles,
+        styleDefinitions: mergeStyles(
+          state.styleDefinitions.length > 0 ? state.styleDefinitions : INITIAL_STYLES,
+          parseCssToStyleDefinitions(getSvgStyleText(svg))
+        ),
         keyframes: state.keyframes.length > 0 ? state.keyframes : INITIAL_KEYFRAMES,
       }));
     }
@@ -251,11 +342,13 @@ export const useEditorStore = create<EditorState>((set, get) => {
     if (historyIndex < history.length - 1) {
       const newIndex = historyIndex + 1;
       const svg = history[newIndex];
-      const styles = resolveStylesForSvg(svg);
       set((state) => ({
         svgDocument: svg,
         historyIndex: newIndex,
-        styleDefinitions: styles,
+        styleDefinitions: mergeStyles(
+          state.styleDefinitions.length > 0 ? state.styleDefinitions : INITIAL_STYLES,
+          parseCssToStyleDefinitions(getSvgStyleText(svg))
+        ),
         keyframes: state.keyframes.length > 0 ? state.keyframes : INITIAL_KEYFRAMES,
       }));
     }

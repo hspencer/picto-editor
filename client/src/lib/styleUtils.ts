@@ -12,13 +12,25 @@ export const getSvgStyleText = (svgDocument: string): string => {
   return styleElement?.textContent?.trim() ?? '';
 };
 
-export const updateSvgStyleText = (svgDocument: string, cssText: string): string => {
+export const updateSvgStyleText = (
+  svgDocument: string,
+  cssText: string,
+  removeIfEmpty: boolean = false
+): string => {
   const parser = new DOMParser();
   const doc = parser.parseFromString(svgDocument, 'image/svg+xml');
   const svgElement = doc.querySelector('svg');
   if (!svgElement) return svgDocument;
 
+  const trimmed = cssText.trim();
   let styleElement = svgElement.querySelector('style');
+  if (!trimmed && removeIfEmpty) {
+    if (styleElement) {
+      styleElement.remove();
+    }
+    return new XMLSerializer().serializeToString(doc);
+  }
+
   if (!styleElement) {
     styleElement = doc.createElementNS(SVG_NS, 'style');
     svgElement.insertBefore(styleElement, svgElement.firstChild);

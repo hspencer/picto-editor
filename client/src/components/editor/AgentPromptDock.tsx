@@ -7,7 +7,6 @@ import { useState } from 'react';
 import { useEditorStore } from '@/stores/editorStore';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Sparkles, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 // Mockable service for partial regeneration
@@ -22,7 +21,7 @@ export async function regenerateElement(elementId: string, prompt: string): Prom
 }
 
 export default function AgentPromptDock() {
-  const { selectedElementId, svgDOM } = useEditorStore();
+  const { selectedElementId } = useEditorStore();
   const [prompt, setPrompt] = useState('');
   const [isRegenerating, setIsRegenerating] = useState(false);
 
@@ -56,47 +55,22 @@ export default function AgentPromptDock() {
 
   return (
     <div className="p-4 space-y-3">
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-sm font-semibold flex items-center gap-2">
-            <Sparkles className="w-4 h-4" />
-            Partial Element Regeneration
-          </h3>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            {selectedElementId 
-              ? `Regenerate #${selectedElementId} with AI`
-              : 'Select an element to regenerate'
-            }
-          </p>
-        </div>
-        <Button
-          onClick={handleRegenerate}
-          disabled={!selectedElementId || !prompt.trim() || isRegenerating}
-          size="sm"
-          className="gap-2"
-        >
-          {isRegenerating ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Regenerating...
-            </>
-          ) : (
-            <>
-              <Sparkles className="w-4 h-4" />
-              Regenerate
-            </>
-          )}
-        </Button>
-      </div>
-
       <Textarea
         value={prompt}
         onChange={(e) => setPrompt(e.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder="Describe how to modify this element... (Cmd/Ctrl + Enter to submit)"
-        className="min-h-[80px] resize-none font-mono text-sm"
+        placeholder="Prompt"
+        className="min-h-[100px] resize-none font-mono text-sm"
         disabled={!selectedElementId || isRegenerating}
       />
+      <Button
+        onClick={handleRegenerate}
+        disabled={!selectedElementId || !prompt.trim() || isRegenerating}
+        size="sm"
+        className="gap-2"
+      >
+        {isRegenerating ? 'regenerando...' : 'regenerar'}
+      </Button>
     </div>
   );
 }

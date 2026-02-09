@@ -12,7 +12,7 @@ import StyleEditorModal from './StyleEditorModal';
 import StylePickerModal from './StylePickerModal';
 
 export default function StyleForgeEnhanced() {
-  const { selectedElementId, svgDocument, removeElementClasses } = useEditorStore();
+  const { selectedElementId, svgDocument, removeElementClasses, deleteElement } = useEditorStore();
   const [selectedElement, setSelectedElement] = useState<Element | null>(null);
   const [isStyleEditorOpen, setIsStyleEditorOpen] = useState(false);
   const [isStylePickerOpen, setIsStylePickerOpen] = useState(false);
@@ -39,34 +39,43 @@ export default function StyleForgeEnhanced() {
     );
   }
 
+  if (!selectedElementId) {
+    return (
+      <aside id="aside-style-forge" className="w-80 border-l border-border bg-card overflow-hidden flex flex-col" />
+    );
+  }
+
   return (
     <aside id="aside-style-forge" className="w-80 border-l border-border bg-card overflow-hidden flex flex-col">
       <div className="flex-none border-b border-border p-4 bg-muted/30">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-sm font-semibold">Element Details</h3>
-            <p className="text-xs text-muted-foreground mt-1">
-              {selectedElementId ? `Selected: #${selectedElementId}` : 'No element selected'}
-            </p>
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold truncate">{selectedElementId}</h3>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => setIsStyleEditorOpen(true)}>
+              Edit Styles
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => {
+                if (!selectedElementId) return;
+                deleteElement(selectedElementId);
+              }}
+            >
+              Eliminar
+            </Button>
           </div>
-          <Button variant="outline" size="sm" onClick={() => setIsStyleEditorOpen(true)}>
-            Edit Styles
-          </Button>
         </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {selectedElement ? (
+        {selectedElement && (
           <div className="space-y-2 text-xs">
             <div className="flex items-center gap-2">
               <span className="text-muted-foreground">Tag</span>
               <code className="px-2 py-0.5 bg-background rounded font-mono">
                 {selectedElement.tagName.toLowerCase()}
               </code>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-muted-foreground">ID</span>
-              <code className="px-2 py-0.5 bg-background rounded font-mono">#{selectedElementId}</code>
             </div>
             {selectedElement.getAttribute('class') && (
               <div className="space-y-2">
@@ -116,10 +125,6 @@ export default function StyleForgeEnhanced() {
                 </Button>
               </div>
             )}
-          </div>
-        ) : (
-          <div className="text-sm text-muted-foreground">
-            Select an element to view details and re-prompt.
           </div>
         )}
 
