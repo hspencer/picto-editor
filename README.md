@@ -1,4 +1,4 @@
-# PictoEditor
+# Picto • Editor
 
 A specialized React tool for refining generative SVGs into semantically tagged, CSS-compliant assets for the [PICTOS.net](https://pictos.net) and MediaFranca ecosystem.
 
