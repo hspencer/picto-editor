@@ -67,7 +67,8 @@ export default function Editor() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'picto.svg';
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    a.download = `picto-${stamp}.svg`;
     a.click();
     URL.revokeObjectURL(url);
   };
