@@ -39,6 +39,7 @@ export interface EditorState {
   selectElement: (id: string | null) => void;
   updateElementId: (oldId: string, newId: string) => void;
   updateElement: (id: string, updates: Partial<SVGElement>) => void;
+  updateElementAttributes: (id: string, attributes: Record<string, string | null>) => void;
   moveElement: (dragId: string, targetId: string, mode?: 'inside' | 'after') => void;
   deleteElement: (id: string) => void;
   setStyles: (styles: StyleDefinition[]) => void;
@@ -208,6 +209,32 @@ export const useEditorStore = create<EditorState>((set, get) => {
 
     const updatedDOM = updateNode(svgDOM);
     set({ svgDOM: updatedDOM });
+  },
+
+  updateElementAttributes: (id: string, attributes: Record<string, string | null>) => {
+    const svgDocument = get().svgDocument;
+    if (!svgDocument) return;
+
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(svgDocument, 'image/svg+xml');
+    const element = doc.querySelector(`#${CSS.escape(id)}`);
+    if (!element) return;
+
+    Object.entries(attributes).forEach(([key, value]) => {
+      if (value === null) {
+        element.removeAttribute(key);
+      } else {
+        element.setAttribute(key, value);
+      }
+    });
+
+    const serialized = new XMLSerializer().serializeToString(doc);
+    const nextSvg = applyUsedStylesToSvg(
+      serialized,
+      get().styleDefinitions,
+      get().keyframes
+    );
+    commitSvg(nextSvg);
   },
 
   moveElement: (dragId: string, targetId: string, mode: 'inside' | 'after' = 'after') => {

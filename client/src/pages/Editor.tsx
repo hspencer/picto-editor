@@ -25,20 +25,31 @@ import StyleForgeEnhanced from '@/components/editor/StyleForgeEnhanced';
 export default function Editor() {
   const { canUndo, canRedo, undo, redo, exportToSchema, svgDocument } = useEditorStore();
   const [treeWidth, setTreeWidth] = useState(320);
+  const [forgeWidth, setForgeWidth] = useState(320);
   const [showCode, setShowCode] = useState(false);
-  const isResizingRef = useRef(false);
+  const isResizingLeftRef = useRef(false);
+  const isResizingRightRef = useRef(false);
 
   useEffect(() => {
     const handleMouseMove = (event: MouseEvent) => {
-      if (!isResizingRef.current) return;
-      const minWidth = 220;
-      const maxWidth = Math.max(minWidth, window.innerWidth * 0.5);
-      const nextWidth = Math.min(maxWidth, Math.max(minWidth, event.clientX));
-      setTreeWidth(nextWidth);
+      if (isResizingLeftRef.current) {
+        const minWidth = 220;
+        const maxWidth = Math.max(minWidth, window.innerWidth * 0.5);
+        const nextWidth = Math.min(maxWidth, Math.max(minWidth, event.clientX));
+        setTreeWidth(nextWidth);
+        return;
+      }
+      if (isResizingRightRef.current) {
+        const minWidth = 260;
+        const maxWidth = Math.max(minWidth, window.innerWidth * 0.5);
+        const nextWidth = Math.min(maxWidth, Math.max(minWidth, window.innerWidth - event.clientX));
+        setForgeWidth(nextWidth);
+      }
     };
 
     const handleMouseUp = () => {
-      isResizingRef.current = false;
+      isResizingLeftRef.current = false;
+      isResizingRightRef.current = false;
     };
 
     window.addEventListener('mousemove', handleMouseMove);
@@ -176,7 +187,7 @@ export default function Editor() {
           <div
             className="absolute right-0 top-0 h-full w-4 cursor-col-resize bg-muted/20 hover:bg-muted/40 transition-colors"
             onMouseDown={() => {
-              isResizingRef.current = true;
+              isResizingLeftRef.current = true;
             }}
             role="separator"
             aria-orientation="vertical"
@@ -227,7 +238,29 @@ export default function Editor() {
         </main>
 
         {/* Right Panel: Style Forge */}
-        <StyleForgeEnhanced />
+        <aside
+          id="aside-style-forge"
+          className="relative flex-none border-l border-border bg-card overflow-hidden"
+          style={{ width: `${forgeWidth}px` }}
+        >
+          <div
+            className="absolute left-0 top-0 h-full w-4 cursor-col-resize bg-muted/20 hover:bg-muted/40 transition-colors"
+            onMouseDown={() => {
+              isResizingRightRef.current = true;
+            }}
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize style forge panel"
+          >
+            <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border/70" />
+            <div className="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 flex-col gap-1">
+              <span className="h-1.5 w-1.5 rounded-full bg-border/70" />
+              <span className="h-1.5 w-1.5 rounded-full bg-border/70" />
+              <span className="h-1.5 w-1.5 rounded-full bg-border/70" />
+            </div>
+          </div>
+          <StyleForgeEnhanced />
+        </aside>
       </div>
     </div>
   );

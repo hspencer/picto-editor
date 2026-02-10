@@ -10,6 +10,7 @@ import AgentPromptDock from './AgentPromptDock';
 import ValidationPanel from './ValidationPanel';
 import StyleEditorModal from './StyleEditorModal';
 import StylePickerModal from './StylePickerModal';
+import ElementNodeEditor from './ElementNodeEditor';
 
 export default function StyleForgeEnhanced() {
   const { selectedElementId, svgDocument, removeElementClasses, deleteElement } = useEditorStore();
@@ -30,23 +31,23 @@ export default function StyleForgeEnhanced() {
 
   if (!svgDocument) {
     return (
-      <aside id="aside-style-forge" className="w-80 border-l border-border bg-card p-4 overflow-y-auto">
+      <div className="h-full p-4 overflow-y-auto">
         <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
           <p className="text-sm font-medium">No SVG loaded</p>
           <p className="text-xs text-center mt-1">Import an SVG to edit</p>
         </div>
-      </aside>
+      </div>
     );
   }
 
   if (!selectedElementId) {
     return (
-      <aside id="aside-style-forge" className="w-80 border-l border-border bg-card overflow-hidden flex flex-col" />
+      <div className="h-full" />
     );
   }
 
   return (
-    <aside id="aside-style-forge" className="w-80 border-l border-border bg-card overflow-hidden flex flex-col">
+    <div className="h-full overflow-hidden flex flex-col">
       <div className="flex-none border-b border-border p-4 bg-muted/30">
         <div className="flex items-center justify-between gap-2">
           <h3 className="text-sm font-semibold truncate">{selectedElementId}</h3>
@@ -128,6 +129,8 @@ export default function StyleForgeEnhanced() {
           </div>
         )}
 
+        <ElementNodeEditor />
+
         <div className="border-t border-border pt-4">
           <AgentPromptDock />
         </div>
@@ -143,6 +146,6 @@ export default function StyleForgeEnhanced() {
         elementId={selectedElementId}
         onClose={() => setIsStylePickerOpen(false)}
       />
-    </aside>
+    </div>
   );
 }

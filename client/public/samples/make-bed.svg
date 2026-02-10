@@ -42,28 +42,25 @@
 
     <defs>
         <style>
-
-            g{
-                vector-effect: non-scaling-stroke;
-            }
-
             .f {
                 fill: #fff;
                 stroke: #000;
                 stroke-width: .3ex;
+                vector-effect: non-scaling-stroke;
             }
 
             .k {
                 fill: #000;
                 stroke: #fff;
                 stroke-width: .3ex;
+                vector-effect: non-scaling-stroke;
             }
 
         </style>
     </defs>
 
     <!-- BED (Patient) -->
-    <g id="g-bed" role="group" class="hc f" tabindex="0" aria-label="Bed, the object of the action" data-role="patient"
+    <g id="bed" role="group" class="f" tabindex="0" aria-label="Bed, the object of the action" data-role="patient"
         data-concept="bed">
         <path id="bed_frame" d="M86.6,66.1l6.7,10.9v7.1h-5.1v5.1c0,.9-.7,1.6-1.6,1.6h-2.3c-.9,
       0-1.6-.7-1.6-1.6v-5.1h-38.2v5.1c0,.9-.7,1.6-1.6,1.6h-2.3c-.9,
@@ -81,7 +78,7 @@
     </g>
 
     <!-- PERSON (Agent) -->
-    <g id="g-person" role="group" class="hc k" tabindex="0" aria-label="Person, the agent who makes the bed"
+    <g id="person" role="group" class="k" tabindex="0" aria-label="Person, the agent who makes the bed"
         data-role="agent" data-concept="person">
         <path id="arm" d="M29.9,37.5l4.2,7.8,6.7,3.7c1.1.6,1.5,2.1.7,3.2h0c-.6.8-1.7,
       1.1-2.6.7l-9.1-3.9-4.1-6.4" aria-label="Arm reaching towards bed" />
