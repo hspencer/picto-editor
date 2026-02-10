@@ -151,7 +151,7 @@ This tool is part of the broader MediaFranca AAC ecosystem:
 1. **NLU Schema**: Natural language understanding and semantic decomposition
 2. **PictoNet**: Generative model for pictogram synthesis
 3. **SVG Schema**: Formal specification (this repository validates against)
-4. **VCSCI Framework**: Human-in-the-loop validation
+4. **ICAP Framework**: Human-in-the-loop validation
 
 ## License
 
@@ -171,4 +171,4 @@ Contributions should align with:
 - [mediafranca/style-editor](https://github.com/mediafranca/style-editor)
 - [mediafranca/mf-svg-schema](https://github.com/mediafranca/mf-svg-schema)
 - [mediafranca/nlu-schema](https://github.com/mediafranca/nlu-schema)
-- [mediafranca/VCSCI](https://github.com/mediafranca/VCSCI)
+- [mediafranca/ICAP](https://github.com/mediafranca/ICAP)

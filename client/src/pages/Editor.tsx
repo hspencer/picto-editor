@@ -61,12 +61,13 @@ export default function Editor() {
   }, []);
 
   const handleExport = () => {
-    const schema = exportToSchema();
-    const blob = new Blob([schema], { type: 'image/svg+xml' });
+    const svg = svgDocument || exportToSchema();
+    if (!svg) return;
+    const blob = new Blob([svg], { type: 'image/svg+xml' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'mediafranca-schema.svg';
+    a.download = 'picto.svg';
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -88,7 +89,7 @@ export default function Editor() {
                 <CircleHelp className="h-4 w-4" />
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-md">
+          <DialogContent className="max-w-md fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
               <DialogHeader>
                 <DialogTitle>Atajos y gestos</DialogTitle>
                 <DialogDescription>
@@ -170,7 +171,7 @@ export default function Editor() {
             className="gap-2"
           >
             <FileDown className="w-4 h-4" />
-            Export to Schema
+            Export SVG
           </Button>
         </div>
       </nav>
