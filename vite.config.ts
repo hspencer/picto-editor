@@ -16,6 +16,7 @@ export default defineConfig({
     },
   },
   envDir: path.resolve(import.meta.dirname),
+  base: "/picto-editor/",
   root: path.resolve(import.meta.dirname, "client"),
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
